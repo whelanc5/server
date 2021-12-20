@@ -43,6 +43,7 @@ zones[xi.zone.VALKURM_DUNES] =
         ALREADY_POSSESS_TEMP           = 8099,  -- You already possess that temporary item.
         NO_COMBINATION                 = 8104,  -- You were unable to enter a combination.
         REGIME_REGISTERED              = 10282, -- New training regime registered!
+        YOU_RECOVERED_MOG_TABLET       = 11324, --You've recovered one of the long-lost mog tablets! You should share the news of your discovery with the Explorer Moogle in Ru'Lude Gardens.
         COMMON_SENSE_SURVIVAL          = 12336, -- It appears that you have arrived at a new survival guide provided by the Adventurers' Mutual Aid Network. Common sense dictates that you should now be able to teleport here from similar tomes throughout the world.
     },
     mob =
