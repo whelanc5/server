@@ -12245,13 +12245,13 @@ void CLuaBaseEntity::setUnkillable(bool unkillable)
 }
 
 /************************************************************************
- *  Function: untargetable()
- *  Purpose : Returns true if a Mob or NPC is untargetable (Not True)
- *  Example : if target:untargetable() then
+ *  Function: setUntargetable()
+ *  Purpose : Returns true if a Mob or NPC is setUntargetable (Not True)
+ *  Example : if target:setUntargetable() then
  *  Notes   : This does not return a value, but instead sets state!
  ************************************************************************/
 
-void CLuaBaseEntity::untargetable(bool untargetable)
+void CLuaBaseEntity::setUntargetable(bool untargetable)
 {
     XI_DEBUG_BREAK_IF(m_PBaseEntity->objtype != TYPE_MOB && m_PBaseEntity->objtype != TYPE_NPC);
 
@@ -12261,7 +12261,7 @@ void CLuaBaseEntity::untargetable(bool untargetable)
     }
     else if (m_PBaseEntity->objtype == TYPE_NPC)
     {
-        static_cast<CMobEntity*>(m_PBaseEntity)->Untargetable(untargetable);
+        static_cast<CNpcEntity*>(m_PBaseEntity)->Untargetable(untargetable);
     }
 
     m_PBaseEntity->updatemask |= UPDATE_HP;
@@ -13764,7 +13764,7 @@ void CLuaBaseEntity::Register()
     SOL_REGISTER("setAggressive", CLuaBaseEntity::setAggressive);
     SOL_REGISTER("setTrueDetection", CLuaBaseEntity::setTrueDetection);
     SOL_REGISTER("setUnkillable", CLuaBaseEntity::setUnkillable);
-    SOL_REGISTER("untargetable", CLuaBaseEntity::untargetable);
+    SOL_REGISTER("setUntargetable", CLuaBaseEntity::setUntargetable);
 
     SOL_REGISTER("setDelay", CLuaBaseEntity::setDelay);
     SOL_REGISTER("setDamage", CLuaBaseEntity::setDamage);
