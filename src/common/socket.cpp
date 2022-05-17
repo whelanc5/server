@@ -55,7 +55,7 @@ typedef int socklen_t;
 SOCKET sock_arr[FD_SETSIZE];
 int    sock_arr_len = 0;
 
-std::array<std::unique_ptr<socket_data>, FD_SETSIZE> session;
+std::array<std::unique_ptr<socket_data>, FD_SETSIZE> sessions;
 
 /// Returns the first fd associated with the socket.
 /// Returns -1 if the socket is not found.
@@ -611,9 +611,9 @@ int recv_to_fifo(int fd)
         return -1;
     }
 
-    auto prev_length = session[fd]->rdata.size();
-    session[fd]->rdata.resize(prev_length + 0x7FF);
-    len = sRecv(fd, session[fd]->rdata.data() + prev_length, (int)(session[fd]->rdata.capacity() - prev_length), 0);
+    auto prev_length = sessions[fd]->rdata.size();
+    sessions[fd]->rdata.resize(prev_length + 0x7FF);
+    len = sRecv(fd, sessions[fd]->rdata.data() + prev_length, (int)(sessions[fd]->rdata.capacity() - prev_length), 0);
 
     if (len == SOCKET_ERROR)
     { // An exception has occured
@@ -630,8 +630,8 @@ int recv_to_fifo(int fd)
         return 0;
     }
 
-    session[fd]->rdata.resize(prev_length + len);
-    session[fd]->rdata_tick = last_tick;
+    sessions[fd]->rdata.resize(prev_length + len);
+    sessions[fd]->rdata_tick = last_tick;
     return 0;
 }
 
@@ -645,19 +645,19 @@ int send_from_fifo(int fd)
         return -1;
     }
 
-    if (session[fd]->wdata.empty())
+    if (sessions[fd]->wdata.empty())
     {
         return 0; // nothing to send
     }
 
-    len = sSend(fd, session[fd]->wdata.data(), (int)session[fd]->wdata.size(), 0);
+    len = sSend(fd, sessions[fd]->wdata.data(), (int)sessions[fd]->wdata.size(), 0);
 
     if (len == SOCKET_ERROR)
     { // An exception has occured
         if (sErrno != S_EWOULDBLOCK)
         {
             // ShowDebug("send_from_fifo: error %d, ending connection #%d", sErrno, fd);
-            session[fd]->wdata.clear(); // Clear the send queue as we can't send anymore. [Skotlex]
+            sessions[fd]->wdata.clear(); // Clear the send queue as we can't send anymore. [Skotlex]
             set_eof(fd);
         }
         return 0;
@@ -667,13 +667,13 @@ int send_from_fifo(int fd)
     {
         // some data could not be transferred?
         // shift unsent data to the beginning of the queue
-        if ((size_t)len < session[fd]->wdata.size())
+        if ((size_t)len < sessions[fd]->wdata.size())
         {
-            session[fd]->wdata.erase(0, len);
+            sessions[fd]->wdata.erase(0, len);
         }
         else
         {
-            session[fd]->wdata.clear();
+            sessions[fd]->wdata.clear();
         }
     }
 
@@ -698,17 +698,15 @@ int null_parse(int fd)
 
 ParseFunc default_func_parse = null_parse;
 
-std::array<std::unique_ptr<socket_data>, FD_SETSIZE> sessions;
-
 bool session_isValid(int fd)
 {
     TracyZoneScoped;
-    return (fd > 0 && fd < FD_SETSIZE && session[fd] != nullptr);
+    return (fd > 0 && fd < FD_SETSIZE && sessions[fd] != nullptr);
 }
 bool session_isActive(int fd)
 {
     TracyZoneScoped;
-    return (session_isValid(fd) && !session[fd]->flag.eof);
+    return (session_isValid(fd) && !sessions[fd]->flag.eof);
 }
 
 int32 makeConnection_tcp(uint32 ip, uint16 port)
@@ -718,7 +716,7 @@ int32 makeConnection_tcp(uint32 ip, uint16 port)
     if (fd > 0)
     {
         create_session(fd, recv_to_fifo, send_from_fifo, default_func_parse);
-        session[fd]->client_addr = ip;
+        sessions[fd]->client_addr = ip;
     }
     return fd;
 }
@@ -770,7 +768,7 @@ int connect_client(int listen_fd, sockaddr_in& client_address)
     sFD_SET(fd, &readfds);
 
     // create_session(fd, recv_to_fifo, send_from_fifo, default_func_parse);
-    // session[fd]->client_addr = ntohl(client_address.sin_addr.s_addr);
+    // sessions[fd]->client_addr = ntohl(client_address.sin_addr.s_addr);
 
     return fd;
 }
@@ -830,8 +828,8 @@ int32 makeListenBind_tcp(const char* ip, uint16 port, RecvFunc connect_client)
     sFD_SET(fd, &readfds);
 
     create_session(fd, connect_client, null_send, null_parse);
-    session[fd]->client_addr = 0; // just listens
-    session[fd]->rdata_tick  = 0; // disable timeouts on this socket
+    sessions[fd]->client_addr = 0; // just listens
+    sessions[fd]->rdata_tick  = 0; // disable timeouts on this socket
 
     return fd;
 }
@@ -846,7 +844,7 @@ int32 RFIFOSKIP(int32 fd, size_t len)
         return 0;
     }
 
-    s = session[fd].get();
+    s = sessions[fd].get();
 
     if (s->rdata.size() < s->rdata_pos + len)
     {
@@ -863,7 +861,7 @@ void do_close_tcp(int32 fd)
     TracyZoneScoped;
     flush_fifo(fd);
     do_close(fd);
-    if (session[fd])
+    if (sessions[fd])
     {
         delete_session(fd);
     }
@@ -978,7 +976,7 @@ void socket_init_tcp()
 
     const char* SOCKET_CONF_FILENAME = "./conf/packet_tcp.conf";
     socket_config_read(SOCKET_CONF_FILENAME);
-    // session[0] is now currently used for disconnected sessions of the map server, and as such,
+    // sessions[0] is now currently used for disconnected sessions of the map server, and as such,
     // should hold enough buffer (it is a vacuum so to speak) as it is never flushed. [Skotlex]
     create_session(0, null_recv, null_send, null_parse);
 
@@ -1011,7 +1009,7 @@ void socket_final_tcp()
 
     for (int i = 1; i < fd_max; i++)
     {
-        if (session[i])
+        if (sessions[i])
         {
             do_close_tcp(i);
         }
@@ -1021,9 +1019,9 @@ void socket_final_tcp()
 void flush_fifo(int32 fd)
 {
     TracyZoneScoped;
-    if (session[fd] != nullptr)
+    if (sessions[fd] != nullptr)
     {
-        session[fd]->func_send(fd);
+        sessions[fd]->func_send(fd);
     }
 }
 
@@ -1047,7 +1045,7 @@ void set_eof(int32 fd)
     TracyZoneScoped;
     if (session_isActive(fd))
     {
-        session[fd]->flag.eof = 1;
+        sessions[fd]->flag.eof = 1;
     }
 }
 
@@ -1057,16 +1055,16 @@ int create_session(int fd, RecvFunc func_recv, SendFunc func_send, ParseFunc fun
 #ifdef _DEBUG
     ShowDebug(fmt::format("create_session fd: {}", fd).c_str());
 #endif // _DEBUG
-    session[fd] = std::make_unique<socket_data>();
+    sessions[fd] = std::make_unique<socket_data>();
 
-    session[fd]->rdata.reserve(RFIFO_SIZE);
-    session[fd]->wdata.reserve(WFIFO_SIZE);
+    sessions[fd]->rdata.reserve(RFIFO_SIZE);
+    sessions[fd]->wdata.reserve(WFIFO_SIZE);
 
-    session[fd]->func_recv  = func_recv;
-    session[fd]->func_send  = func_send;
-    session[fd]->func_parse = func_parse;
+    sessions[fd]->func_recv  = func_recv;
+    sessions[fd]->func_send  = func_send;
+    sessions[fd]->func_parse = func_parse;
 
-    session[fd]->rdata_tick = last_tick;
+    sessions[fd]->rdata_tick = last_tick;
 
     return 0;
 }
@@ -1084,13 +1082,13 @@ int delete_session(int fd)
         return -1;
     }
 
-    session[fd] = nullptr;
+    sessions[fd] = nullptr;
 
     // In order to resize fd_max to the minimum possible size, we have to find
     // the fd in use with the highest value. We will iterate through the session
     // list backwards until we find the first non-nullptr entry.
     // clang-format off
-    auto result = std::find_if(session.rbegin(), session.rend(),
+    auto result = std::find_if(sessions.rbegin(), sessions.rend(),
     [](std::unique_ptr<socket_data>& entry)
     {
         return entry != nullptr;
@@ -1099,7 +1097,7 @@ int delete_session(int fd)
 
     auto old_fd_max = fd_max;
 
-    fd_max = std::distance(result, session.rend());
+    fd_max = std::distance(result, sessions.rend());
 
 #ifdef _DEBUG
     ShowDebug(fmt::format("Resizing fd_max from {} to {}.", old_fd_max, fd_max).c_str());

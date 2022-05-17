@@ -227,15 +227,15 @@ int do_sockets(fd_set* rfd, duration next)
 #ifdef _DEBUG
         ShowDebug(fmt::format("select fd: {}", i).c_str());
 #endif // _DEBUG
-        if (session[fd])
+        if (sessions[fd])
         {
-            session[fd]->func_recv(fd);
+            sessions[fd]->func_recv(fd);
 
             if (fd != login_fd && fd != login_lobbydata_fd && fd != login_lobbyview_fd)
             {
-                session[fd]->func_parse(fd);
+                sessions[fd]->func_parse(fd);
 
-                if (!session[fd])
+                if (!sessions[fd])
                     continue;
 
                 // RFIFOFLUSH(fd);
@@ -246,20 +246,20 @@ int do_sockets(fd_set* rfd, duration next)
     // otherwise assume that the fd_set is a bit-array and enumerate it in a standard way
     for (int fd = 1; ret && fd < fd_max; ++fd)
     {
-        if (sFD_ISSET(fd, rfd) && session[fd])
+        if (sFD_ISSET(fd, rfd) && sessions[fd])
         {
 #ifdef _DEBUG
             ShowDebug(fmt::format("Handling select fd: {}", fd).c_str());
 #endif // _DEBUG
-            session[fd]->func_recv(fd);
+            sessions[fd]->func_recv(fd);
 
-            if (session[fd])
+            if (sessions[fd])
             {
                 if (fd != login_fd && fd != login_lobbydata_fd && fd != login_lobbyview_fd)
                 {
-                    session[fd]->func_parse(fd);
+                    sessions[fd]->func_parse(fd);
 
-                    if (!session[fd])
+                    if (!sessions[fd])
                     {
                         continue;
                     }
@@ -274,14 +274,14 @@ int do_sockets(fd_set* rfd, duration next)
 
     for (int fd = 1; fd < fd_max; fd++)
     {
-        if (!session[fd])
+        if (!sessions[fd])
         {
             continue;
         }
 
-        if (!session[fd]->wdata.empty())
+        if (!sessions[fd]->wdata.empty())
         {
-            session[fd]->func_send(fd);
+            sessions[fd]->func_send(fd);
         }
     }
 
