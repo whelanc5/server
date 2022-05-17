@@ -619,7 +619,6 @@ int recv_to_fifo(int fd)
     { // An exception has occured
         if (sErrno != S_EWOULDBLOCK)
         {
-            // ShowDebug("recv_to_fifo: code %d, closing connection #%d", sErrno, fd);
             set_eof(fd);
         }
         return 0;
@@ -1055,24 +1054,59 @@ void set_eof(int32 fd)
 int create_session(int fd, RecvFunc func_recv, SendFunc func_send, ParseFunc func_parse)
 {
     TracyZoneScoped;
+#ifdef _DEBUG
+    ShowDebug(fmt::format("create_session fd: {}", fd).c_str());
+#endif // _DEBUG
     session[fd] = std::make_unique<socket_data>();
+
     session[fd]->rdata.reserve(RFIFO_SIZE);
     session[fd]->wdata.reserve(WFIFO_SIZE);
 
     session[fd]->func_recv  = func_recv;
     session[fd]->func_send  = func_send;
     session[fd]->func_parse = func_parse;
+
     session[fd]->rdata_tick = last_tick;
+
     return 0;
 }
 
 int delete_session(int fd)
 {
     TracyZoneScoped;
+
+#ifdef _DEBUG
+    ShowDebug(fmt::format("delete_session fd: {}", fd).c_str());
+#endif // _DEBUG
+
     if (fd <= 0 || fd >= FD_SETSIZE)
     {
         return -1;
     }
+
+    session[fd] = nullptr;
+
+    // In order to resize fd_max to the minimum possible size, we have to find
+    // the fd in use with the highest value. We will iterate through the session
+    // list backwards until we find the first non-nullptr entry.
+    // clang-format off
+    auto result = std::find_if(session.rbegin(), session.rend(),
+    [](std::unique_ptr<socket_data>& entry)
+    {
+        return entry != nullptr;
+    });
+    // clang-format on
+
+    auto old_fd_max = fd_max;
+
+    fd_max = std::distance(result, session.rend());
+
+#ifdef _DEBUG
+    ShowDebug(fmt::format("Resizing fd_max from {} to {}.", old_fd_max, fd_max).c_str());
+#else
+    std::ignore = old_fd_max;
+#endif // _DEBUG
+
     return 0;
 }
 

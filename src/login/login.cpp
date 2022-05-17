@@ -199,15 +199,13 @@ void set_server_type()
 int do_sockets(fd_set* rfd, duration next)
 {
     struct timeval timeout;
-    int            ret;
-    int            i;
 
     // can timeout until the next tick
     timeout.tv_sec  = std::chrono::duration_cast<std::chrono::seconds>(next).count();
     timeout.tv_usec = std::chrono::duration_cast<std::chrono::microseconds>(next - std::chrono::duration_cast<std::chrono::seconds>(next)).count();
 
     memcpy(rfd, &readfds, sizeof(*rfd));
-    ret = sSelect(fd_max, rfd, nullptr, nullptr, &timeout);
+    int ret = sSelect(fd_max, rfd, nullptr, nullptr, &timeout);
 
     if (ret == SOCKET_ERROR)
     {
@@ -221,11 +219,14 @@ int do_sockets(fd_set* rfd, duration next)
 
     last_tick = time(nullptr);
 
-#if defined(WIN32)
+#if defined(WIN32_FD_INTERNALS) && defined(WIN32)
     // on windows, enumerating all members of the fd_set is way faster if we access the internals
-    for (i = 0; i < (int)rfd->fd_count; ++i)
+    for (int i = 0; i < (int)rfd->fd_count; ++i)
     {
         int fd = sock2fd(rfd->fd_array[i]);
+#ifdef _DEBUG
+        ShowDebug(fmt::format("select fd: {}", i).c_str());
+#endif // _DEBUG
         if (session[fd])
         {
             session[fd]->func_recv(fd);
@@ -237,72 +238,50 @@ int do_sockets(fd_set* rfd, duration next)
                 if (!session[fd])
                     continue;
 
-                //              RFIFOFLUSH(fd);
+                // RFIFOFLUSH(fd);
             }
         }
     }
 #else
     // otherwise assume that the fd_set is a bit-array and enumerate it in a standard way
-    for (i = 1; ret && i < fd_max; ++i)
+    for (int fd = 1; ret && fd < fd_max; ++fd)
     {
-        if (sFD_ISSET(i, rfd) && session[i])
+        if (sFD_ISSET(fd, rfd) && session[fd])
         {
-            session[i]->func_recv(i);
+#ifdef _DEBUG
+            ShowDebug(fmt::format("Handling select fd: {}", fd).c_str());
+#endif // _DEBUG
+            session[fd]->func_recv(fd);
 
-            if (session[i])
+            if (session[fd])
             {
-                if (i != login_fd && i != login_lobbydata_fd && i != login_lobbyview_fd)
+                if (fd != login_fd && fd != login_lobbydata_fd && fd != login_lobbyview_fd)
                 {
-                    session[i]->func_parse(i);
+                    session[fd]->func_parse(fd);
 
-                    if (!session[i])
+                    if (!session[fd])
                     {
                         continue;
                     }
 
-                    //                          RFIFOFLUSH(fd);
+                    // RFIFOFLUSH(fd);
                 }
                 --ret;
             }
         }
     }
-#endif
+#endif // defined(WIN32_FD_INTERNALS) && defined(WIN32)
 
-    /*
-        // parse input data on each socket
-    for(i = 1; i < fd_max; i++)
+    for (int fd = 1; fd < fd_max; fd++)
     {
-        if(!session[i])
-            continue;
-
-        if (session[i]->rdata_tick && DIFF_TICK(last_tick, session[i]->rdata_tick) > stall_time) {
-            ShowInfo("Session #%d timed out", i);
-            set_eof(i);
-        }
-
-        session[i]->func_parse(i);
-
-        if(!session[i])
-            continue;
-
-        // after parse, check client's RFIFO size to know if there is an invalid packet (too big and not parsed)
-        if (session[i]->rdata_size == RFIFO_SIZE && session[i]->max_rdata == RFIFO_SIZE) {
-            set_eof(i);
-            continue;
-        }
-        RFIFOFLUSH(i);
-    }*/
-
-    for (i = 1; i < fd_max; i++)
-    {
-        if (!session[i])
+        if (!session[fd])
         {
             continue;
         }
 
-        if (!session[i]->wdata.empty())
+        if (!session[fd]->wdata.empty())
         {
-            session[i]->func_send(i);
+            session[fd]->func_send(fd);
         }
     }
 
