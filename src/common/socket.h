@@ -246,7 +246,7 @@ struct socket_data
 };
 
 // Data prototype declaration
-extern std::array<std::unique_ptr<socket_data>, FD_SETSIZE> sessions;
+static std::array<std::unique_ptr<socket_data>, FD_SETSIZE> sessions;
 //////////////////////////////////
 // some checking on sockets
 bool session_isValid(int fd);
